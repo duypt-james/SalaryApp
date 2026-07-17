@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <title>JEAMS - Quản lý Công & Lương</title>
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Salary">
+    <meta name="description" content="Ứng dụng thống kê và tính công lương">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --primary: #4f46e5; --primary-light: #818cf8; --primary-bg: #eef2ff;
+            --success: #059669; --success-bg: #ecfdf5;
+            --warning: #d97706; --warning-bg: #fffbeb;
+            --danger: #dc2626; --danger-bg: #fef2f2;
+            --bg: #f1f5f9; --card: #ffffff;
+            --text: #1e293b; --text2: #64748b; --text3: #94a3b8;
+            --border: #e2e8f0; --radius: 14px;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            background: var(--bg); color: var(--text);
+            padding-top: calc(82px + var(--safe-top));
+            padding-bottom: calc(20px + var(--safe-bottom));
+            -webkit-font-smoothing: antialiased;
+            overscroll-behavior-y: contain;
+        }
+
+        .app-header {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            padding: calc(var(--safe-top) + 8px) 14px 10px;
+            box-shadow: 0 2px 20px rgba(79, 70, 229, 0.3);
+        }
+        .header-top {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 8px; gap: 8px;
+        }
+        .app-title { color: white; font-size: 14px; font-weight: 700; letter-spacing: -0.3px; white-space: nowrap; flex-shrink: 0; }
+        .header-nav { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .nav-btn {
+            width: 30px; height: 30px; border-radius: 8px; border: none;
+            background: rgba(255,255,255,0.2); color: white; font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+        }
+        .nav-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.35); }
+        .nav-label { color: white; font-size: 14px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+        .header-net {
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(255,255,255,0.15); border-radius: 10px; padding: 6px 14px;
+        }
+        .header-net-label { color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 500; }
+        .header-net-val { color: white; font-size: 17px; font-weight: 800; letter-spacing: -0.5px; }
+
+        .section { padding: 0 12px; margin-bottom: 12px; }
+        .section-title {
+            font-size: 12px; font-weight: 700; color: var(--text2);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            padding: 12px 4px 8px;
+        }
+
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .summary-card {
+            background: var(--card); border-radius: var(--radius); padding: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06); position: relative; overflow: hidden;
+        }
+        .summary-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+        }
+        .card-ot::before { background: var(--warning); }
+        .card-gross::before { background: var(--primary); }
+        .card-tax::before { background: var(--danger); }
+        .card-net::before { background: var(--success); }
+        .summary-icon { font-size: 20px; margin-bottom: 4px; }
+        .summary-label { font-size: 11px; color: var(--text3); font-weight: 500; }
+        .summary-value { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; margin-top: 2px; }
+        .card-ot .summary-value { color: var(--warning); }
+        .card-gross .summary-value { color: var(--primary); }
+        .card-tax .summary-value { color: var(--danger); }
+        .card-net .summary-value { color: var(--success); }
+
+        .table-card {
+            background: var(--card); border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden;
+        }
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .table-scroll::-webkit-scrollbar { height: 3px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        table { border-collapse: collapse; width: 100%; }
+        td {
+            padding: 2px 0; text-align: center; font-size: 10px;
+            border-bottom: 1px solid #f8fafc; min-width: 26px; height: 28px;
+        }
+        .row-label {
+            font-weight: 700; background: #f8fafc; position: sticky; left: 0; z-index: 5;
+            text-align: left; padding-left: 8px; min-width: 46px; width: 46px;
+            border-right: 2px solid var(--border); font-size: 9px; color: var(--text2);
+        }
+        .head-date { background: #f1f5f9; font-weight: 800; color: var(--primary); font-size: 11px; }
+        .t7 { background-color: #fefce8; }
+        .cn { background-color: #fef9c3; }
+        .holiday { background-color: #fef2f2; color: var(--danger); font-weight: 700; }
+        .ot-in {
+            width: 100%; border: none; text-align: center; font-weight: 700;
+            background: transparent; outline: none; font-size: 12px; color: var(--primary);
+            -webkit-appearance: none; border-radius: 3px; padding: 2px 0;
+        }
+        .ot-in:focus { background: var(--primary-bg); }
+        .ot-in::placeholder { color: var(--text3); font-weight: 400; }
+
+        .chart-card {
+            background: var(--card); border-radius: var(--radius); padding: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 12px;
+        }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .chart-title { font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase; }
+        .chart-box { position: relative; height: 200px; }
+        .chart-box canvas { width: 100% !important; height: 100% !important; }
+
+        .year-summary { text-align: right; font-size: 10px; color: var(--text3); line-height: 1.5; }
+        .year-summary b { color: var(--primary); font-weight: 800; }
+
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+        .stat-card {
+            background: var(--card); border-radius: var(--radius); padding: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .stat-card-title {
+            font-size: 10px; font-weight: 700; color: var(--text3);
+            text-transform: uppercase; margin-bottom: 8px;
+        }
+        .stat-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; border-bottom: 1px solid #f8fafc; }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-row .label { color: var(--text2); }
+        .stat-row .val { font-weight: 700; }
+        .stat-total { background: var(--primary-bg); margin: 0 -12px; padding: 8px 12px; border-radius: 0 0 var(--radius) var(--radius); }
+        .stat-total .val { color: var(--primary); }
+
+        .tax-card {
+            background: var(--card); border-radius: var(--radius); overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .tax-card-header {
+            padding: 12px 14px; background: #f8fafc; border-bottom: 1px solid var(--border);
+            font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase;
+        }
+        .tax-card-body { padding: 0 14px; }
+        .tax-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; font-size: 12px; border-bottom: 1px solid #f8fafc;
+        }
+        .tax-row:last-child { border-bottom: none; }
+        .tax-row .label { color: var(--text2); }
+        .tax-row .val { font-weight: 700; }
+        .tax-row.bonus { color: var(--success); background: var(--success-bg); margin: 0 -14px; padding: 10px 14px; }
+        .tax-row.taxable { color: var(--primary); background: var(--primary-bg); font-weight: 700; margin: 0 -14px; padding: 10px 14px; }
+        .tax-row.bh .val { color: var(--danger); }
+        .tax-npt-input {
+            width: 50px; text-align: right; border: 1px solid var(--border); border-radius: 6px;
+            padding: 4px 6px; font-size: 13px; font-weight: 600; outline: none;
+        }
+        .tax-npt-input:focus { border-color: var(--primary); }
+
+        .tax-bracket { padding: 0 14px; }
+        .tax-bracket table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .tax-bracket th { padding: 8px 0; text-align: left; color: var(--text3); font-weight: 600; border-bottom: 1px solid var(--border); }
+        .tax-bracket td { padding: 8px 0; border-bottom: 1px solid #f8fafc; }
+        .tax-bracket .total-row { background: var(--danger-bg); font-weight: 800; color: var(--danger); }
+        .tax-bracket .total-row td { padding: 10px 0; }
+
+        .net-result {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 14px; background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+        }
+        .net-label { font-size: 13px; font-weight: 600; }
+        .net-amount { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; }
+
+        .settings-card {
+            background: var(--card); border-radius: var(--radius); overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .settings-header {
+            padding: 12px 14px; background: #f8fafc; border-bottom: 1px solid var(--border);
+            font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase;
+            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+        }
+        .settings-header .arrow { transition: transform 0.2s; font-size: 14px; }
+        .settings-header.open .arrow { transform: rotate(180deg); }
+        .settings-body { padding: 14px; display: none; }
+        .settings-body.show { display: block; }
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f8fafc; }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label { font-size: 13px; color: var(--text2); }
+        .setting-input {
+            width: 120px; text-align: right; border: 1px solid var(--border); border-radius: 8px;
+            padding: 8px 10px; font-size: 14px; font-weight: 600; outline: none;
+            background: #f8fafc;
+        }
+        .setting-input:focus { border-color: var(--primary); background: white; }
+        .setting-select {
+            border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+            font-size: 13px; font-weight: 600; outline: none; background: #f8fafc;
+        }
+        .setting-select:focus { border-color: var(--primary); }
+        .bonus-group { margin-top: 8px; padding: 10px; background: #f8fafc; border-radius: 10px; }
+        .bonus-group-title { font-size: 11px; font-weight: 700; color: var(--text3); margin-bottom: 8px; text-transform: uppercase; }
+        .bonus-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .bonus-row:last-child { margin-bottom: 0; }
+        .bonus-row label { font-size: 11px; color: var(--text2); min-width: 48px; }
+
+        .btn-reset {
+            display: block; width: 100%; margin-top: 14px; padding: 12px;
+            background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca;
+            border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;
+            transition: all 0.15s; text-transform: uppercase;
+        }
+        .btn-reset:active { transform: scale(0.97); background: var(--danger); color: white; }
+
+        .pie-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        @media (min-width: 768px) {
+            body { max-width: 600px; margin: 0 auto; }
+            .app-header { left: 50%; transform: translateX(-50%); max-width: 600px; }
+            .summary-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+
+        .fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div class="app-header">
+    <div class="header-top">
+        <div class="app-title">JEAMS Salary</div>
+        <div class="header-nav">
+            <button class="nav-btn" onclick="changeMonth(-1)">&#8249;</button>
+            <span class="nav-label" id="navLabel"></span>
+            <button class="nav-btn" onclick="changeMonth(1)">&#8250;</button>
+        </div>
+    </div>
+    <div class="header-net">
+        <span class="header-net-label">Thực nhận tháng</span>
+        <span class="header-net-val" id="headerNet">0 VNĐ</span>
+    </div>
+</div>
+
+<div class="section">
+    <div class="summary-grid">
+        <div class="summary-card card-ot">
+            <div class="summary-icon">&#9202;</div>
+            <div class="summary-label">Giờ OT</div>
+            <div class="summary-value" id="sOT">0h</div>
+        </div>
+        <div class="summary-card card-gross">
+            <div class="summary-icon">&#128176;</div>
+            <div class="summary-label">Gross</div>
+            <div class="summary-value" id="sGross">0</div>
+        </div>
+        <div class="summary-card card-tax">
+            <div class="summary-icon">&#127973;</div>
+            <div class="summary-label">Thuế TNCN</div>
+            <div class="summary-value" id="sTax">0</div>
+        </div>
+        <div class="summary-card card-net">
+            <div class="summary-icon">&#10003;</div>
+            <div class="summary-label">Net</div>
+            <div class="summary-value" id="sNet">0</div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Bảng chấm công OT</div>
+    <div class="table-card">
+        <div class="table-scroll">
+            <table id="mainTable">
+                <tr id="rDate"><td class="row-label">Ngày</td></tr>
+                <tr id="rDay"><td class="row-label">Thứ</td></tr>
+                <tr id="r15"><td class="row-label">x1.5</td></tr>
+                <tr id="r20"><td class="row-label">x2.0</td></tr>
+                <tr id="r30"><td class="row-label">x3.0</td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="chart-card">
+        <div class="chart-header">
+            <span class="chart-title">Thống kê năm: OT & Thực nhận</span>
+            <div class="year-summary" id="yearSummary"></div>
+        </div>
+        <div class="chart-box"><canvas id="yChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <div class="chart-title">Biến động OT tháng</div>
+        <div class="chart-box"><canvas id="mChart"></canvas></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="pie-row">
+        <div class="stat-card">
+            <div class="stat-card-title">Thống kê OT</div>
+            <div class="stat-row"><span class="label">Ngày công (T2-T6)</span><span class="val" id="stDays">0</span></div>
+            <div class="stat-row"><span class="label">Công/ngày</span><span class="val" id="stDaily">0</span></div>
+            <div class="stat-row"><span class="label">Công/giờ</span><span class="val" id="stHourly">0</span></div>
+            <div class="stat-row"><span class="label">OT x1.5</span><span class="val" id="st15">0h</span></div>
+            <div class="stat-row"><span class="label">OT x2.0</span><span class="val" id="st20">0h</span></div>
+            <div class="stat-row"><span class="label">OT x3.0</span><span class="val" id="st30">0h</span></div>
+            <div class="stat-row stat-total"><span class="label">Tổng OT</span><span class="val" id="stTotalOT">0h</span></div>
+        </div>
+        <div class="chart-card" style="margin-bottom:0">
+            <div class="chart-title">Cơ cấu OT</div>
+            <div class="chart-box"><canvas id="typeChart"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="tax-card">
+        <div class="tax-card-header">Thuế TNCN & Thực nhận</div>
+        <div class="tax-card-body">
+            <div class="tax-row"><span class="label">Gross (Lương + OT)</span><span class="val" id="grVal">0</span></div>
+            <div class="tax-row bonus" id="bonusRow" style="display:none"><span class="label" id="bonusLabel">Thưởng</span><span class="val" id="bonusVal">0</span></div>
+            <div class="tax-row bh"><span class="label">BHXH, BHTN (10.5%)</span><span class="val" id="bhVal" style="color:var(--danger)">0</span></div>
+            <div class="tax-row"><span class="label">Giảm trừ bản thân</span><span class="val" id="deductSelfVal">11.000.000</span></div>
+            <div class="tax-row"><span class="label">Giảm trừ gia cảnh (<span id="nptDisplay">0</span> người x <span id="deductFamilyEach">6.200.000</span>)</span><span class="val" id="deductFamilyVal">0</span></div>
+            <div class="tax-row"><span class="label">Số người phụ thuộc</span><input type="number" class="tax-npt-input" id="npt" value="0" oninput="calc()"></div>
+            <div class="tax-row taxable"><span class="label">Thu nhập tính thuế</span><span class="val" id="taxableVal">0</span></div>
+        </div>
+        <div class="tax-bracket">
+            <table>
+                <thead><tr><th>Mức thuế (Trđ)</th><th>T rate</th><th>Tiền thuế</th></tr></thead>
+                <tbody id="taxBody"></tbody>
+                <tr class="total-row"><td>TỔNG THUẾ TNCN</td><td></td><td id="totalTaxVal">0</td></tr>
+            </table>
+        </div>
+        <div class="net-result">
+            <span class="net-label">THỰC NHẬN (NET)</span>
+            <span class="net-amount" id="netVal">0 VNĐ</span>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Thiết lập</div>
+    <div class="settings-card">
+        <div class="settings-header" onclick="toggleSettings()">
+            <span>Cài đặt lương & thưởng</span>
+            <span class="arrow">&#9662;</span>
+        </div>
+        <div class="settings-body" id="settingsBody">
+            <div class="setting-row">
+                <span class="setting-label">Lương cơ bản</span>
+                <input type="number" class="setting-input" id="baseSal" oninput="calc()">
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Giảm trừ bản thân</span>
+                <input type="number" class="setting-input" id="deductSelf" oninput="calc()">
+            </div>
+            <div class="setting-row">
+                <span class="setting-label">Giảm trừ gia cảnh / người</span>
+                <input type="number" class="setting-input" id="deductFamily" oninput="calc()">
+            </div>
+            <div class="bonus-group">
+                <div class="bonus-group-title">Thưởng Tết</div>
+                <div class="bonus-row">
+                    <label>Tháng</label>
+                    <select class="setting-select" id="tetMonth" onchange="calc()"></select>
+                    <input type="number" class="setting-input" id="tetAmount" value="0" oninput="calc()">
+                </div>
+            </div>
+            <div class="bonus-group">
+                <div class="bonus-group-title">Thưởng KPI</div>
+                <div class="bonus-row">
+                    <label>Tháng</label>
+                    <select class="setting-select" id="kpiMonth" onchange="calc()"></select>
+                    <input type="number" class="setting-input" id="kpiAmount" value="0" oninput="calc()">
+                </div>
+            </div>
+            <button class="btn-reset" onclick="resetData()">Xóa dữ liệu tháng này</button>
+        </div>
+    </div>
+</div>
+
+<div id="loadingOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.95);z-index:999;display:flex;align-items:center;justify-content:center;flex-direction:column">
+    <div style="font-size:32px;margin-bottom:12px">&#9203;</div>
+    <div style="color:#64748b;font-size:14px;font-weight:600">Đang tải dữ liệu...</div>
+</div>
+
+<script>
+let charts = { y: null, m: null, t: null };
+let currentY, currentM;
+const hols = ["01/01","30/04","01/05","02/09","03/09"];
+const f = new Intl.NumberFormat('vi-VN');
+let calcTimer = null;
+let appCache = {};
+let firebaseReady = false;
+
+const firebaseConfig = {
+    apiKey: "AIzaSyBDW7gkWG6gOaCTQ78l71qCb0icnNkPCaw",
+    authDomain: "salary-sync-afbed.firebaseapp.com",
+    databaseURL: "https://salary-sync-afbed-default-rtdb.firebaseio.com",
+    projectId: "salary-sync-afbed",
+    storageBucket: "salary-sync-afbed.firebasestorage.app",
+    messagingSenderId: "202457000913",
+    appId: "1:202457000913:web:0db6ee217a7900d006cef0"
+};
+
+try {
+    firebase.initializeApp(firebaseConfig);
+    firebase.database().ref('.info/connected').on('value', (snap) => {
+        const el = document.getElementById('loadingOverlay');
+        if (snap.val() === true && el.style.display !== 'none') {
+            loadAllData().then(() => { el.style.display = 'none'; });
+        }
+    });
+    firebaseReady = true;
+} catch(e) { console.warn('Firebase init failed:', e); }
+
+function dbGet(path) { return firebase.database().ref(path).once('value').then(s => s.val()); }
+function dbSet(path, val) { if(firebaseReady) firebase.database().ref(path).set(val); }
+function dbRemove(path) { if(firebaseReady) firebase.database().ref(path).remove(); }
+
+async function loadAllData() {
+    try {
+        const data = await dbGet('app');
+        appCache = data || {};
+        const meta = appCache.meta || {};
+        currentY = meta.lastY || new Date().getFullYear();
+        currentM = meta.lastM || (new Date().getMonth() + 1);
+    } catch(e) {
+        console.warn('Load failed, using defaults:', e);
+        const now = new Date();
+        currentY = now.getFullYear();
+        currentM = now.getMonth() + 1;
+        appCache = {};
+    }
+}
+
+function saveMeta() { dbSet('app/meta', { lastY: currentY, lastM: currentM }); }
+
+function getCached(key) { return appCache[key] !== undefined ? appCache[key] : null; }
+function setCached(key, val) { appCache[key] = val; dbSet('app/' + key, val); }
+function removeCached(key) { delete appCache[key]; dbRemove('app/' + key); }
+
+async function init() {
+    await loadAllData();
+
+    const tM = document.getElementById('tetMonth');
+    const kM = document.getElementById('kpiMonth');
+    if (!tM.innerHTML) {
+        for (let i = 1; i <= 12; i++) {
+            let o = `<option value="${i}">T${i}</option>`;
+            tM.innerHTML += o;
+            kM.innerHTML += o;
+        }
+    }
+
+    loadSettings();
+    buildTable();
+    calc();
+    updateNavLabel();
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function updateNavLabel() {
+    document.getElementById('navLabel').textContent = `Tháng ${currentM} / ${currentY}`;
+}
+
+function changeMonth(dir) {
+    currentM += dir;
+    if (currentM > 12) { currentM = 1; currentY++; }
+    if (currentM < 1) { currentM = 12; currentY--; }
+    saveMeta();
+    updateNavLabel();
+    loadSettings();
+    buildTable();
+    calc();
+}
+
+function loadSettings() {
+    document.getElementById('baseSal').value = getCached(`baseSal_${currentY}_${currentM}`) ?? 21000000;
+    document.getElementById('deductSelf').value = getCached(`deductSelf_${currentY}_${currentM}`) ?? 11000000;
+    document.getElementById('deductFamily').value = getCached(`deductFamily_${currentY}_${currentM}`) ?? 6200000;
+    document.getElementById('npt').value = getCached(`npt_${currentY}_${currentM}`) ?? 0;
+    document.getElementById('tetMonth').value = getCached(`tetM_${currentY}`) ?? 1;
+    document.getElementById('tetAmount').value = getCached(`tetA_${currentY}`) ?? 0;
+    document.getElementById('kpiMonth').value = getCached(`kpiM_${currentY}`) ?? 3;
+    document.getElementById('kpiAmount').value = getCached(`kpiA_${currentY}`) ?? 0;
+}
+
+function buildTable() {
+    const dCount = new Date(currentY, currentM, 0).getDate();
+    const saved = getCached(`otData_${currentY}_${currentM}`) || {};
+
+    ['rDate','rDay','r15','r20','r30'].forEach(id => {
+        const r = document.getElementById(id);
+        while (r.cells.length > 1) r.deleteCell(1);
+    });
+
+    for (let d = 1; d <= dCount; d++) {
+        const dt = new Date(currentY, currentM - 1, d);
+        const day = dt.getDay();
+        const dateStr = `${d < 10 ? '0' + d : d}/${currentM < 10 ? '0' + currentM : currentM}`;
+        let cls = '';
+        if (day === 0) cls = 'cn'; else if (day === 6) cls = 't7';
+        if (hols.includes(dateStr)) cls = 'holiday';
+
+        document.getElementById('rDate').insertAdjacentHTML('beforeend',
+            `<td class="head-date ${cls}">${d < 10 ? '0' + d : d}</td>`);
+        document.getElementById('rDay').insertAdjacentHTML('beforeend',
+            `<td class="${cls}">${['CN','T2','T3','T4','T5','T6','T7'][day]}</td>`);
+        ['15','20','30'].forEach(rate => {
+            const val = saved[d]?.[rate] || '';
+            document.getElementById(`r${rate}`).insertAdjacentHTML('beforeend',
+                `<td class="${cls}"><input type="number" step="0.5" class="ot-in" data-d="${d}" data-r="${rate}" value="${val}" oninput="debounceCalc()"></td>`);
+        });
+    }
+}
+
+function debounceCalc() {
+    clearTimeout(calcTimer);
+    calcTimer = setTimeout(calc, 150);
+}
+
+function resetData() {
+    if (confirm("Xóa toàn bộ dữ liệu của tháng này?")) {
+        removeCached(`otData_${currentY}_${currentM}`);
+        removeCached(`baseSal_${currentY}_${currentM}`);
+        loadSettings();
+        buildTable();
+        calc();
+    }
+}
+
+function toggleSettings() {
+    const body = document.getElementById('settingsBody');
+    const hdr = document.querySelector('.settings-header');
+    body.classList.toggle('show');
+    hdr.classList.toggle('open');
+}
+
+function calc() {
+    const base = parseFloat(document.getElementById('baseSal').value) || 0;
+    const deductSelf = parseFloat(document.getElementById('deductSelf').value) || 11000000;
+    const deductFamily = parseFloat(document.getElementById('deductFamily').value) || 6200000;
+    const npt = parseInt(document.getElementById('npt').value) || 0;
+    const tM = parseInt(document.getElementById('tetMonth').value);
+    const tA = parseFloat(document.getElementById('tetAmount').value) || 0;
+    const kM = parseInt(document.getElementById('kpiMonth').value);
+    const kA = parseFloat(document.getElementById('kpiAmount').value) || 0;
+
+    setCached(`baseSal_${currentY}_${currentM}`, base);
+    setCached(`deductSelf_${currentY}_${currentM}`, deductSelf);
+    setCached(`deductFamily_${currentY}_${currentM}`, deductFamily);
+    setCached(`npt_${currentY}_${currentM}`, npt);
+    setCached(`tetM_${currentY}`, tM);
+    setCached(`tetA_${currentY}`, tA);
+    setCached(`kpiM_${currentY}`, kM);
+    setCached(`kpiA_${currentY}`, kA);
+
+    let s15 = 0, s20 = 0, s30 = 0, workDays = 0, mOTData = [], storage = {};
+    const totalDaysInMonth = new Date(currentY, currentM, 0).getDate();
+
+    for (let d = 1; d <= totalDaysInMonth; d++) {
+        const dt = new Date(currentY, currentM - 1, d);
+        if (dt.getDay() !== 0 && dt.getDay() !== 6) workDays++;
+        mOTData[d - 1] = 0;
+    }
+
+    document.querySelectorAll('.ot-in').forEach(i => {
+        const d = parseInt(i.dataset.d), r = i.dataset.r, v = parseFloat(i.value) || 0;
+        if (!storage[d]) storage[d] = {};
+        storage[d][r] = i.value;
+        if (r === '15') s15 += v; else if (r === '20') s20 += v; else s30 += v;
+        mOTData[d - 1] += v;
+    });
+
+    setCached(`otData_${currentY}_${currentM}`, storage);
+
+    const daily = base / (workDays || 1);
+    const hourly = daily / 8;
+    const totalOTHours = s15 + s20 + s30;
+    const otMoney = (s15 * 1.5 + s20 * 2 + s30 * 3) * hourly;
+
+    let currentMonthBonus = 0, bonusText = "";
+    if (currentM === tM) { currentMonthBonus += tA; bonusText += "Thưởng Tết "; }
+    if (currentM === kM) { currentMonthBonus += kA; bonusText += (bonusText ? "& " : "") + "Thưởng KPI"; }
+
+    const gross = base + otMoney + currentMonthBonus;
+    const bh = base * 0.105;
+    const totalDeductFamily = npt * deductFamily;
+    const taxable = Math.max(0, gross - bh - deductSelf - totalDeductFamily);
+
+    let tax = 0, taxDetails = "";
+    const steps = [
+        { m: "Đến 10", r: 0.05, limit: 10e6 },
+        { m: "10 - 30", r: 0.1, limit: 20e6 },
+        { m: "30 - 60", r: 0.2, limit: 30e6 },
+        { m: "60 - 100", r: 0.3, limit: 40e6 },
+        { m: "Trên 100", r: 0.35, limit: Infinity }
+    ];
+
+    let tempRem = taxable;
+    steps.forEach(s => {
+        let chunk = Math.min(tempRem, s.limit);
+        if (chunk > 0) {
+            let t = chunk * s.r;
+            tax += t; tempRem -= chunk;
+            taxDetails += `<tr><td>${s.m}</td><td>${s.r * 100}%</td><td>${Math.round(t).toLocaleString()}</td></tr>`;
+        }
+    });
+    document.getElementById('taxBody').innerHTML = taxDetails || '<tr><td colspan="3" style="text-align:center;color:var(--text3)">Không phát sinh thuế</td></tr>';
+
+    const net = Math.round(gross - bh - tax);
+
+    document.getElementById('headerNet').textContent = f.format(net) + ' VNĐ';
+    document.getElementById('sOT').textContent = totalOTHours + 'h';
+    document.getElementById('sGross').textContent = formatShort(gross);
+    document.getElementById('sTax').textContent = formatShort(tax);
+    document.getElementById('sNet').textContent = formatShort(net);
+
+    document.getElementById('stDays').textContent = workDays;
+    document.getElementById('stDaily').textContent = f.format(Math.round(daily));
+    document.getElementById('stHourly').textContent = f.format(Math.round(hourly));
+    document.getElementById('st15').textContent = s15 + 'h';
+    document.getElementById('st20').textContent = s20 + 'h';
+    document.getElementById('st30').textContent = s30 + 'h';
+    document.getElementById('stTotalOT').textContent = totalOTHours + 'h';
+
+    document.getElementById('grVal').textContent = f.format(Math.round(base + otMoney));
+
+    const bRow = document.getElementById('bonusRow');
+    if (currentMonthBonus > 0) {
+        bRow.style.display = 'flex';
+        document.getElementById('bonusLabel').textContent = bonusText;
+        document.getElementById('bonusVal').textContent = '+' + f.format(currentMonthBonus);
+    } else {
+        bRow.style.display = 'none';
+    }
+
+    document.getElementById('bhVal').textContent = f.format(Math.round(bh));
+    document.getElementById('deductSelfVal').textContent = f.format(deductSelf);
+    document.getElementById('nptDisplay').textContent = npt;
+    document.getElementById('deductFamilyEach').textContent = f.format(deductFamily);
+    document.getElementById('deductFamilyVal').textContent = f.format(totalDeductFamily);
+    document.getElementById('taxableVal').textContent = f.format(Math.round(taxable));
+    document.getElementById('totalTaxVal').textContent = f.format(Math.round(tax));
+    document.getElementById('netVal').textContent = f.format(net) + ' VNĐ';
+
+    setCached(`net_${currentY}_${currentM}`, net);
+    setCached(`otTotal_${currentY}_${currentM}`, totalOTHours);
+
+    updateCharts(mOTData, { s15, s20, s30 });
+}
+
+function formatShort(v) {
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + ' tỷ';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + ' tr';
+    if (v >= 1e3) return (v / 1e3).toFixed(0) + 'k';
+    return f.format(Math.round(v));
+}
+
+function updateCharts(mOT, types) {
+    let yLabels = [], yNet = [], yOT = [];
+    let totalYearNet = 0, totalYearOT = 0;
+
+    for (let i = 1; i <= 12; i++) {
+        yLabels.push(`T${i}`);
+        const mNet = parseFloat(getCached(`net_${currentY}_${i}`)) || 0;
+        const mOTSum = parseFloat(getCached(`otTotal_${currentY}_${i}`)) || 0;
+        yNet.push(mNet / 1e6);
+        yOT.push(mOTSum);
+        totalYearNet += mNet;
+        totalYearOT += mOTSum;
+    }
+
+    document.getElementById('yearSummary').innerHTML =
+        `<span>Net ${currentY}: <b>${f.format(totalYearNet)}</b></span><span>OT: <b>${totalYearOT}h</b></span>`;
+
+    const commonOpts = { maintainAspectRatio: false, animation: { duration: 300 } };
+
+    if (!charts.y) {
+        charts.y = new Chart(document.getElementById('yChart'), {
+            data: {
+                labels: yLabels,
+                datasets: [
+                    { type: 'bar', label: 'OT (h)', data: yOT, backgroundColor: 'rgba(217,119,6,0.4)', yAxisID: 'yOT', barThickness: 14, borderRadius: 4 },
+                    { type: 'line', label: 'Net (Trđ)', data: yNet, borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,0.1)', fill: true, tension: 0.4, yAxisID: 'yNet', pointRadius: 3, pointBackgroundColor: '#4f46e5' }
+                ]
+            },
+            options: { ...commonOpts, plugins: { legend: { display: false } },
+                scales: {
+                    yNet: { type: 'linear', position: 'left', grid: { display: false }, ticks: { font: { size: 9 } } },
+                    yOT: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 9 } } },
+                    x: { ticks: { font: { size: 9 } }, grid: { display: false } }
+                }
+            }
+        });
+    } else {
+        charts.y.data.datasets[0].data = yOT;
+        charts.y.data.datasets[1].data = yNet;
+        charts.y.update('none');
+    }
+
+    const mLabels = Array.from({ length: mOT.length }, (_, i) => i + 1);
+    if (!charts.m) {
+        charts.m = new Chart(document.getElementById('mChart'), {
+            type: 'line',
+            data: { labels: mLabels, datasets: [{ data: mOT, borderColor: '#d97706', backgroundColor: 'rgba(217,119,6,0.15)', fill: true, tension: 0.4, pointRadius: 2, pointBackgroundColor: '#d97706' }] },
+            options: { ...commonOpts, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 9 } } }, y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 9 } } } } }
+        });
+    } else {
+        charts.m.data.labels = mLabels;
+        charts.m.data.datasets[0].data = mOT;
+        charts.m.update('none');
+    }
+
+    const typeData = [types.s15, types.s20, types.s30];
+    const hasData = typeData.some(v => v > 0);
+    if (!charts.t) {
+        charts.t = new Chart(document.getElementById('typeChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['x1.5', 'x2.0', 'x3.0'],
+                datasets: [{ data: hasData ? typeData : [1, 1, 1], backgroundColor: hasData ? ['#4f46e5', '#d97706', '#dc2626'] : ['#e2e8f0', '#e2e8f0', '#e2e8f0'], borderWidth: 0 }]
+            },
+            options: { ...commonOpts, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+        });
+    } else {
+        charts.t.data.datasets[0].data = hasData ? typeData : [1, 1, 1];
+        charts.t.data.datasets[0].backgroundColor = hasData ? ['#4f46e5', '#d97706', '#dc2626'] : ['#e2e8f0', '#e2e8f0', '#e2e8f0'];
+        charts.t.update('none');
+    }
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
